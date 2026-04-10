@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Resultados - Análisis de Instrumentos</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <!-- PapaParse for CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        :root {
+            --color-very-high: #10b981;
+            --color-high: #3b82f6;
+            --color-medium: #f59e0b;
+            --color-low: #ef4444;
+        }
+
+        * {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .dimension-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .interpretation-very-high {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #059669;
+            border-left: 4px solid #10b981;
+        }
+
+        .interpretation-high {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .interpretation-medium {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: #92400e;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .interpretation-low {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #7f1d1d;
+            border-left: 4px solid #ef4444;
+        }
+
+        .score-cell {
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            color: white;
+            text-align: center;
+        }
+
+        .score-very-high {
+            background-color: #10b981;
+        }
+
+        .score-high {
+            background-color: #3b82f6;
+        }
+
+        .score-medium {
+            background-color: #f59e0b;
+        }
+
+        .score-low {
+            background-color: #ef4444;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .drag-over {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .dark .drag-over {
+            background-color: #1e3a8a;
+            border-color: #60a5fa;
+        }
+
+        .word-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            padding: 1rem;
+        }
+
+        .word-item {
+            padding: 0.5rem 1rem;
+            background-color: #f3f4f6;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .dark .word-item {
+            background-color: #374151;
+            color: #f3f4f6;
+        }
+
+        .kpi-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .kpi-card.high {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .kpi-card.medium {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .kpi-card.low {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        input[type="range"] {
+            accent-color: #3b82f6;
+        }
+
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div id="app">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900">Dashboard de Resultados</h1>
+                        <p class="text-sm text-gray-500 mt-1">Análisis de Instrumentos de Evaluación</p>
+                    </div>
+                    <button @click="toggleTheme" class="p-2 rounded-lg bg-gray-100 hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 015.646 5.646 9.003 9.003 0 0015.354 15.354z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Upload Section -->
+            <section class="mb-8" v-show="!hasData">
+                <div class="bg-white rounded-lg shadow-md p-8">
+                    <h2 class="text-xl font-bold mb-6 text-gray-900">Cargar Datos</h2>
+
+                    <!-- Drag and Drop Area -->
+                    <div
+                        @drop="handleFileDrop"
+                        @dragover="dragOver = true"
+                        @dragleave="dragOver = false"
+                        @click="triggerFileInput"
+                        class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition mb-6"
+                        :class="dragOver ? 'drag-over' : ''">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                        </svg>
+                        <p class="text-lg font-semibold text-gray-700 mb-2">Arrastra archivos CSV aquí</p>
+                        <p class="text-sm text-gray-500">o haz clic para seleccionar</p>
+                    </div>
+
+                    <input
+                        type="file"
+                        ref="fileInput"
+                        @change="handleFileSelect"
+                        accept=".csv"
+                        multiple
+                        style="display: none;">
+
+                    <!-- Demo Button -->
+                    <button
+                        @click="loadDemoData"
+                        class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition">
+                        Cargar Datos de Demostración
+                    </button>
+                </div>
+            </section>
+
+            <!-- Main Dashboard -->
+            <div v-show="hasData" class="fade-in">
+                <!-- Instrument Tabs -->
+                <div class="bg-white rounded-lg shadow-md mb-6 p-4 flex gap-2 overflow-x-auto sticky top-20 z-30">
+                    <button
+                        @click="activeInstrument = 'all'"
+                        :class="activeInstrument === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition">
+                        Vista General
+                    </button>
+                    <button
+                        @click="activeInstrument = 'Diotimia'"
+                        :class="activeInstrument === 'Diotimia' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition">
+                        Diotimia
+                    </button>
+                    <button
+                        @click="activeInstrument = 'SeAmigo'"
+                        :class="activeInstrument === 'SeAmigo' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition">
+                        SeAmigo
+                    </button>
+                </div>
+
+                <!-- Filter Panel Toggle -->
+                <div class="mb-6 flex justify-between items-center">
+                    <button
+                        @click="showFilters = !showFilters"
+                        class="bg-white rounded-lg shadow-md px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                        </svg>
+                        {{ showFilters ? 'Ocultar' : 'Mostrar' }} Filtros
+                    </button>
+                    <span class="text-sm text-gray-600">
+                        {{ filteredData.length }} de {{ allData.length }} respuestas
+                    </span>
+                </div>
+
+                <!-- Filter Panel -->
+                <div v-show="showFilters" class="bg-white rounded-lg shadow-md p-6 mb-6 fade-in">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                        <!-- Carrera Filter -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Carrera</label>
+                            <select v-model="filters.carrera" multiple class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">-- Todas --</option>
+                                <option v-for="c in uniqueCarreras" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+
+                        <!-- Semestre Filter -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Semestre</label>
+                            <select v-model="filters.semestre" multiple class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">-- Todos --</option>
+                                <option v-for="s in uniqueSemestres" :key="s" :value="s">{{ s }}</option>
+                            </select>
+                        </div>
+
+                        <!-- Frecuencia Uso Filter -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Frecuencia de Uso</label>
+                            <select v-model="filters.frecuencia_uso" class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">-- Todas --</option>
+                                <option v-for="f in uniqueFrecuencias" :key="f" :value="f">{{ f }}</option>
+                            </select>
+                        </div>
+
+                        <!-- Uso Previo IA Filter -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Uso Previo de IA</label>
+                            <select v-model="filters.uso_previo_ia" class="w-full border border-gray-300 rounded-lg p-2 text-sm">
+                                <option value="">-- Todos --</option>
+                                <option value="Sí">Sí</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+
+                        <!-- Edad Range Filter -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Rango de Edad: {{ filters.edadMin }} - {{ filters.edadMax }}
+                            </label>
+                            <input
+                                v-model.number="filters.edadMin"
+                                type="range"
+                                :min="minAge"
+                                :max="maxAge"
+                                class="w-full">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">&nbsp;</label>
+                            <input
+                                v-model.number="filters.edadMax"
+                                type="range"
+                                :min="minAge"
+                                :max="maxAge"
+                                class="w-full">
+                        </div>
+                    </div>
+
+                    <!-- Clear Filters Button -->
+                    <button
+                        @click="clearFilters"
+                        class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition">
+                        Limpiar Filtros
+                    </button>
+                </div>
+
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="kpi-card rounded-lg shadow-md p-6 text-white">
+                        <p class="text-sm font-semibold opacity-90 mb-1">Total de Respuestas</p>
+                        <p class="text-4xl font-bold">{{ filteredData.length }}</p>
+                    </div>
+                    <div :class="['kpi-card', getInterpretationClass(overallAverage)]" class="rounded-lg shadow-md p-6 text-white">
+                        <p class="text-sm font-semibold opacity-90 mb-1">Promedio General</p>
+                        <p class="text-4xl font-bold">{{ overallAverage.toFixed(2) }}</p>
+                        <p class="text-xs opacity-75 mt-2">{{ getInterpretation(overallAverage) }}</p>
+                    </div>
+                    <div :class="['kpi-card', getInterpretationClass(bestDimensionScore)]" class="rounded-lg shadow-md p-6 text-white">
+                        <p class="text-sm font-semibold opacity-90 mb-1">Mejor Dimensión</p>
+                        <p class="text-2xl font-bold">{{ bestDimensionName }}</p>
+                        <p class="text-sm mt-2">{{ bestDimensionScore.toFixed(2) }}</p>
+                    </div>
+                    <div :class="['kpi-card', getInterpretationClass(worstDimensionScore)]" class="rounded-lg shadow-md p-6 text-white">
+                        <p class="text-sm font-semibold opacity-90 mb-1">Dimensión Crítica</p>
+                        <p class="text-2xl font-bold">{{ worstDimensionName }}</p>
+                        <p class="text-sm mt-2">{{ worstDimensionScore.toFixed(2) }}</p>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Radar Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Evaluación por Dimensión</h3>
+                        <div class="chart-container">
+                            <canvas ref="radarChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Horizontal Bar Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Promedio de Dimensiones</h3>
+                        <div class="chart-container">
+                            <canvas ref="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Distribution Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Comparison Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Comparación por Semestre</h3>
+                        <div class="chart-container">
+                            <canvas ref="comparisonChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Evolution Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Evolución Temporal</h3>
+                        <div class="chart-container">
+                            <canvas ref="trendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Table -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Resultados Detallados por Item</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100 border-b-2 border-gray-200">
+                                <tr>
+                                    <th class="text-left px-4 py-3 font-semibold text-gray-700">Dimensión</th>
+                                    <th class="text-left px-4 py-3 font-semibold text-gray-700">Item</th>
+                                    <th class="text-center px-4 py-3 font-semibold text-gray-700">Promedio</th>
+                                    <th class="text-center px-4 py-3 font-semibold text-gray-700">Desv. Est.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template v-for="(dimension, idx) in getCurrentDimensions()" :key="idx">
+                                    <tr v-for="itemNum in dimension.itemCount" :key="itemNum" class="border-b border-gray-200 hover:bg-gray-50">
+                                        <td class="px-4 py-3 font-medium text-gray-700" :class="itemNum === 1 ? 'pt-4' : ''">
+                                            {{ itemNum === 1 ? dimension.name : '' }}
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-600">Item {{ itemNum }}</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span :class="['score-cell', 'score-' + getInterpretation(dimension.itemAverages[itemNum]).toLowerCase().replace(/\s+/g, '-')]">
+                                                {{ dimension.itemAverages[itemNum].toFixed(2) }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-600">{{ dimension.itemStdDevs[itemNum].toFixed(2) }}</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Open Questions -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                    <h3 class="text-lg font-bold text-gray-900 mb-6">Preguntas Abiertas</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <template v-for="(responses, questionNum) in openQuestions" :key="questionNum">
+                            <div class="border border-gray-200 rounded-lg p-4">
+                                <button
+                                    @click="toggleOpenQuestion(questionNum)"
+                                    class="w-full text-left font-semibold text-gray-900 flex justify-between items-center mb-4 hover:text-blue-600">
+                                    <span>Pregunta {{ questionNum }} ({{ responses.length }} respuestas)</span>
+                                    <svg class="w-5 h-5 transition" :class="expandedQuestions[questionNum] ? 'transform rotate-180' : ''">
+                                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                                    </svg>
+                                </button>
+
+                                <div v-show="expandedQuestions[questionNum]">
+                                    <!-- Word Cloud -->
+                                    <div class="mb-4">
+                                        <p class="text-xs font-semibold text-gray-600 mb-2">Palabras Frecuentes:</p>
+                                        <div class="word-cloud">
+                                            <span v-for="(word, idx) in getTopWords(responses, 10)" :key="idx" class="word-item">
+                                                {{ word.text }} ({{ word.count }})
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Responses List -->
+                                    <p class="text-xs font-semibold text-gray-600 mb-2">Respuestas:</p>
+                                    <div class="max-h-48 overflow-y-auto space-y-2">
+                                        <p v-for="(response, idx) in responses" :key="idx" class="text-sm text-gray-700 p-2 bg-gray-50 rounded">
+                                            "{{ response }}"
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Export Section -->
+                <div class="bg-white rounded-lg shadow-md p-6 flex gap-4 flex-wrap">
+                    <button
+                        @click="exportFilteredData"
+                        class="bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-600 transition flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Descargar Datos Filtrados (CSV)
+                    </button>
+                    <button
+                        @click="exportSummary"
+                        class="bg-green-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-600 transition flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        Descargar Resumen (CSV)
+                    </button>
+                    <button
+                        @click="resetDashboard"
+                        class="bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold hover:bg-gray-500 transition">
+                        Cargar Nuevos Datos
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.min.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        const STOPWORDS = new Set([
+            'el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'una', 'por', 'con', 'para', 'es', 'se', 'no',
+            'las', 'los', 'del', 'al', 'o', 'este', 'eso', 'muy', 'más', 'como', 'pero', 'su', 'ya', 'o',
+            'fue', 'sea', 'sería', 'siendo', 'está', 'estaba', 'están', 'esta', 'ese', 'esa', 'esos', 'esas',
+            'aquí', 'arriba', 'abajo', 'allá', 'allí', 'afuera', 'dentro', 'entre', 'hacia', 'desde', 'hasta'
+        ]);
+
+        const DIOTIMIA_DIMENSIONS = [
+            { name: 'Autoconocimiento e identificación de intereses', itemRange: [1, 3] },
+            { name: 'Información académica y curricular', itemRange: [4, 6] },
+            { name: 'Toma de decisiones', itemRange: [7, 9] },
+            { name: 'Planeación de trayectoria', itemRange: [10, 12] },
+            { name: 'Acompañamiento en orientación', itemRange: [13, 15] },
+            { name: 'Confianza, pertinencia y límites', itemRange: [16, 18] }
+        ];
+
+        const SEAMIGO_DIMENSIONS = [
+            { name: 'Percepción', itemRange: [1, 6] },
+            { name: 'Uso', itemRange: [7, 10] },
+            { name: 'Aplicación', itemRange: [11, 14] },
+            { name: 'Impacto', itemRange: [15, 18] },
+            { name: 'Riesgos y limitaciones', itemRange: [19, 22], inverted: true },
+            { name: 'Continuidad de uso', itemRange: [23, 24] }
+        ];
+
+        createApp({
+            data() {
+                return {
+                    allData: [],
+                    filteredData: [],
+                    hasData: false,
+                    activeInstrument: 'all',
+                    showFilters: false,
+                    dragOver: false,
+
+                    filters: {
+                        carrera: [],
+                        semestre: [],
+                        frecuencia_uso: '',
+                        uso_previo_ia: '',
+                        edadMin: 18,
+                        edadMax: 50
+                    },
+
+                    charts: {},
+                    expandedQuestions: {},
+                    openQuestions: {}
+                };
+            },
+
+            computed: {
+                uniqueCarreras() {
+                    return [...new Set(this.allData.map(r => r.carrera))].filter(Boolean);
+                },
+                uniqueSemestres() {
+                    return [...new Set(this.allData.map(r => r.semestre))].filter(Boolean).sort((a, b) => a - b);
+                },
+                uniqueFrecuencias() {
+                    return [...new Set(this.allData.map(r => r.frecuencia_uso))].filter(Boolean);
+                },
+                minAge() {
+                    const ages = this.allData.map(r => r.edad).filter(Boolean);
+                    return ages.length > 0 ? Math.floor(Math.min(...ages)) : 18;
+                },
+                maxAge() {
+                    const ages = this.allData.map(r => r.edad).filter(Boolean);
+                    return ages.length > 0 ? Math.ceil(Math.max(...ages)) : 50;
+                },
+                overallAverage() {
+                    if (this.filteredData.length === 0) return 0;
+                    let sum = 0;
+                    let count = 0;
+
+                    this.filteredData.forEach(row => {
+                        const instrument = row.instrumento;
+                        const maxItem = instrument === 'Diotimia' ? 18 : 24;
+
+                        for (let i = 1; i <= maxItem; i++) {
+                            const itemKey = `item_${i}`;
+                            if (row[itemKey]) {
+                                let value = parseFloat(row[itemKey]);
+                                if (instrument === 'SeAmigo' && i >= 19 && i <= 22) {
+                                    value = 6 - value;
+                                }
+                                sum += value;
+                                count++;
+                            }
+                        }
+                    });
+
+                    return count > 0 ? sum / count : 0;
+                },
+                bestDimensionName() {
+                    const dims = this.getCurrentDimensions();
+                    if (dims.length === 0) return 'N/A';
+                    return dims.reduce((a, b) => a.average > b.average ? a : b).name;
+                },
+                bestDimensionScore() {
+                    const dims = this.getCurrentDimensions();
+                    if (dims.length === 0) return 0;
+                    return dims.reduce((a, b) => a.average > b.average ? a : b).average;
+                },
+                worstDimensionName() {
+                    const dims = this.getCurrentDimensions();
+                    if (dims.length === 0) return 'N/A';
+                    return dims.reduce((a, b) => a.average < b.average ? a : b).name;
+                },
+                worstDimensionScore() {
+                    const dims = this.getCurrentDimensions();
+                    if (dims.length === 0) return 0;
+                    return dims.reduce((a, b) => a.average < b.average ? a : b).average;
+                }
+            },
+
+            methods: {
+                triggerFileInput() {
+                    this.$refs.fileInput.click();
+                },
+
+                handleFileSelect(e) {
+                    this.processFiles(e.target.files);
+                },
+
+                handleFileDrop(e) {
+                    e.preventDefault();
+                    this.dragOver = false;
+                    this.processFiles(e.dataTransfer.files);
+                },
+
+                processFiles(files) {
+                    const promises = [];
+
+                    for (let file of files) {
+                        if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                            promises.push(
+                                new Promise((resolve) => {
+                                    Papa.parse(file, {
+                                        header: true,
+                                        skipEmptyLines: true,
+                                        complete: (results) => {
+                                            resolve(results.data);
+                                        }
+                                    });
+                                })
+                            );
+                        }
+                    }
+
+                    Promise.all(promises).then(allResults => {
+                        this.allData = allResults.flat().map(row => this.parseRow(row));
+                        this.applyFilters();
+                        this.hasData = true;
+                        this.updateCharts();
+                        this.extractOpenQuestions();
+                    });
+                },
+
+                parseRow(row) {
+                    const parsed = {
+                        instrumento: row.instrumento?.trim() || '',
+                        timestamp: row.timestamp?.trim() || '',
+                        edad: row.edad ? parseInt(row.edad) : null,
+                        sexo: row.sexo?.trim() || '',
+                        carrera: row.carrera?.trim() || '',
+                        semestre: row.semestre ? parseInt(row.semestre) : null,
+                        uso_previo_ia: row.uso_previo_ia?.trim() || '',
+                        frecuencia_uso: row.frecuencia_uso?.trim() || ''
+                    };
+
+                    const maxItem = parsed.instrumento === 'Diotimia' ? 18 : 24;
+                    for (let i = 1; i <= maxItem; i++) {
+                        const key = `item_${i}`;
+                        parsed[key] = row[key] ? parseInt(row[key]) : null;
+                    }
+
+                    const maxQuestion = parsed.instrumento === 'Diotimia' ? 3 : 2;
+                    for (let i = 1; i <= maxQuestion; i++) {
+                        const key = `pregunta_abierta_${i}`;
+                        parsed[key] = row[key]?.trim() || '';
+                    }
+
+                    return parsed;
+                },
+
+                applyFilters() {
+                    this.filteredData = this.allData.filter(row => {
+                        if (this.activeInstrument !== 'all' && row.instrumento !== this.activeInstrument) {
+                            return false;
+                        }
+
+                        if (this.filters.carrera.length > 0 && !this.filters.carrera.includes(row.carrera)) {
+                            return false;
+                        }
+
+                        if (this.filters.semestre.length > 0 && !this.filters.semestre.includes(row.semestre?.toString())) {
+                            return false;
+                        }
+
+                        if (this.filters.frecuencia_uso && row.frecuencia_uso !== this.filters.frecuencia_uso) {
+                            return false;
+                        }
+
+                        if (this.filters.uso_previo_ia && row.uso_previo_ia !== this.filters.uso_previo_ia) {
+                            return false;
+                        }
+
+                        if (row.edad && (row.edad < this.filters.edadMin || row.edad > this.filters.edadMax)) {
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                    this.$nextTick(() => {
+                        this.updateCharts();
+                        this.extractOpenQuestions();
+                    });
+                },
+
+                clearFilters() {
+                    this.filters = {
+                        carrera: [],
+                        semestre: [],
+                        frecuencia_uso: '',
+                        uso_previo_ia: '',
+                        edadMin: this.minAge,
+                        edadMax: this.maxAge
+                    };
+                    this.applyFilters();
+                },
+
+                getCurrentDimensions() {
+                    const dimensions = this.activeInstrument === 'Diotimia' ? DIOTIMIA_DIMENSIONS :
+                                     this.activeInstrument === 'SeAmigo' ? SEAMIGO_DIMENSIONS :
+                                     [];
+
+                    return dimensions.map(dim => {
+                        const itemAverages = {};
+                        const itemStdDevs = {};
+                        const itemCounts = {};
+                        let dimensionSum = 0;
+                        let dimensionCount = 0;
+
+                        for (let i = dim.itemRange[0]; i <= dim.itemRange[1]; i++) {
+                            const values = [];
+                            this.filteredData.forEach(row => {
+                                const key = `item_${i}`;
+                                if (row[key]) {
+                                    let value = parseFloat(row[key]);
+                                    if (dim.inverted) {
+                                        value = 6 - value;
+                                    }
+                                    values.push(value);
+                                }
+                            });
+
+                            if (values.length > 0) {
+                                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                                const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
+                                const stdDev = Math.sqrt(variance);
+
+                                itemAverages[i] = avg;
+                                itemStdDevs[i] = stdDev;
+                                itemCounts[i] = values.length;
+
+                                dimensionSum += avg;
+                                dimensionCount++;
+                            }
+                        }
+
+                        return {
+                            name: dim.name,
+                            average: dimensionCount > 0 ? dimensionSum / dimensionCount : 0,
+                            itemAverages,
+                            itemStdDevs,
+                            itemCount: dim.itemRange[1] - dim.itemRange[0] + 1
+                        };
+                    });
+                },
+
+                updateCharts() {
+                    this.$nextTick(() => {
+                        this.renderRadarChart();
+                        this.renderBarChart();
+                        this.renderComparisonChart();
+                        this.renderTrendChart();
+                    });
+                },
+
+                renderRadarChart() {
+                    const ctx = this.$refs.radarChart;
+                    if (!ctx) return;
+
+                    if (this.charts.radar) {
+                        this.charts.radar.destroy();
+                    }
+
+                    const dimensions = this.getCurrentDimensions();
+
+                    this.charts.radar = new Chart(ctx, {
+                        type: 'radar',
+                        data: {
+                            labels: dimensions.map(d => d.name),
+                            datasets: [{
+                                label: 'Promedio',
+                                data: dimensions.map(d => d.average),
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                pointBackgroundColor: '#3b82f6',
+                                pointBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: '#3b82f6',
+                                pointRadius: 5,
+                                pointHoverRadius: 7
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                r: {
+                                    beginAtZero: true,
+                                    max: 5,
+                                    ticks: {
+                                        stepSize: 1
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+
+                renderBarChart() {
+                    const ctx = this.$refs.barChart;
+                    if (!ctx) return;
+
+                    if (this.charts.bar) {
+                        this.charts.bar.destroy();
+                    }
+
+                    const dimensions = this.getCurrentDimensions();
+
+                    this.charts.bar = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: dimensions.map(d => d.name),
+                            datasets: [{
+                                label: 'Promedio',
+                                data: dimensions.map(d => d.average),
+                                backgroundColor: dimensions.map(d => {
+                                    const color = this.getInterpretation(d.average);
+                                    return color === 'Muy alto' ? '#10b981' :
+                                           color === 'Alto' ? '#3b82f6' :
+                                           color === 'Medio' ? '#f59e0b' : '#ef4444';
+                                }),
+                                borderRadius: 5
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    beginAtZero: true,
+                                    max: 5
+                                }
+                            }
+                        }
+                    });
+                },
+
+                renderComparisonChart() {
+                    const ctx = this.$refs.comparisonChart;
+                    if (!ctx) return;
+
+                    if (this.charts.comparison) {
+                        this.charts.comparison.destroy();
+                    }
+
+                    const dimensions = this.getCurrentDimensions();
+                    const semestres = this.uniqueSemestres.sort((a, b) => a - b);
+
+                    const datasets = dimensions.map((dim, idx) => {
+                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                        return {
+                            label: dim.name,
+                            data: semestres.map(sem => {
+                                const semData = this.filteredData.filter(r => r.semestre === sem);
+                                let sum = 0, count = 0;
+                                semData.forEach(row => {
+                                    for (let i = dim.itemRange[0]; i <= dim.itemRange[1]; i++) {
+                                        const key = `item_${i}`;
+                                        if (row[key]) {
+                                            let value = parseFloat(row[key]);
+                                            if (dim.inverted) value = 6 - value;
+                                            sum += value;
+                                            count++;
+                                        }
+                                    }
+                                });
+                                return count > 0 ? sum / count : 0;
+                            }),
+                            backgroundColor: colors[idx % colors.length],
+                            borderColor: colors[idx % colors.length],
+                            borderWidth: 1
+                        };
+                    });
+
+                    this.charts.comparison = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: semestres.map(s => `Semestre ${s}`),
+                            datasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        font: { size: 10 }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 5
+                                }
+                            }
+                        }
+                    });
+                },
+
+                renderTrendChart() {
+                    const ctx = this.$refs.trendChart;
+                    if (!ctx) return;
+
+                    if (this.charts.trend) {
+                        this.charts.trend.destroy();
+                    }
+
+                    const sorted = [...this.filteredData].sort((a, b) =>
+                        new Date(a.timestamp) - new Date(b.timestamp)
+                    );
+
+                    const grouped = {};
+                    sorted.forEach(row => {
+                        const date = row.timestamp?.split('T')[0] || 'sin fecha';
+                        if (!grouped[date]) grouped[date] = [];
+                        grouped[date].push(row);
+                    });
+
+                    const dates = Object.keys(grouped).sort();
+                    const averages = dates.map(date => {
+                        let sum = 0, count = 0;
+                        grouped[date].forEach(row => {
+                            const maxItem = row.instrumento === 'Diotimia' ? 18 : 24;
+                            for (let i = 1; i <= maxItem; i++) {
+                                const key = `item_${i}`;
+                                if (row[key]) {
+                                    let value = parseFloat(row[key]);
+                                    if (row.instrumento === 'SeAmigo' && i >= 19 && i <= 22) {
+                                        value = 6 - value;
+                                    }
+                                    sum += value;
+                                    count++;
+                                }
+                            }
+                        });
+                        return count > 0 ? sum / count : 0;
+                    });
+
+                    this.charts.trend = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: dates,
+                            datasets: [{
+                                label: 'Promedio General',
+                                data: averages,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                pointBackgroundColor: '#3b82f6',
+                                pointRadius: 4,
+                                pointHoverRadius: 6
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 5
+                                }
+                            }
+                        }
+                    });
+                },
+
+                extractOpenQuestions() {
+                    this.openQuestions = {};
+
+                    this.filteredData.forEach(row => {
+                        const maxQuestion = row.instrumento === 'Diotimia' ? 3 : 2;
+                        for (let i = 1; i <= maxQuestion; i++) {
+                            const key = `pregunta_abierta_${i}`;
+                            const response = row[key];
+                            if (response && response.trim()) {
+                                if (!this.openQuestions[i]) {
+                                    this.openQuestions[i] = [];
+                                    this.$set(this.expandedQuestions, i, false);
+                                }
+                                this.openQuestions[i].push(response);
+                            }
+                        }
+                    });
+                },
+
+                getTopWords(responses, limit = 10) {
+                    const wordFreq = {};
+
+                    responses.forEach(response => {
+                        const words = response.toLowerCase()
+                            .match(/\b\w+\b/g) || [];
+
+                        words.forEach(word => {
+                            if (!STOPWORDS.has(word) && word.length > 2) {
+                                wordFreq[word] = (wordFreq[word] || 0) + 1;
+                            }
+                        });
+                    });
+
+                    return Object.entries(wordFreq)
+                        .map(([text, count]) => ({ text, count }))
+                        .sort((a, b) => b.count - a.count)
+                        .slice(0, limit);
+                },
+
+                toggleOpenQuestion(questionNum) {
+                    this.$set(this.expandedQuestions, questionNum, !this.expandedQuestions[questionNum]);
+                },
+
+                getInterpretation(score) {
+                    if (score >= 4.1) return 'Muy alto';
+                    if (score >= 3.1) return 'Alto';
+                    if (score >= 2.1) return 'Medio';
+                    return 'Bajo';
+                },
+
+                getInterpretationClass(score) {
+                    const interp = this.getInterpretation(score);
+                    return interp === 'Muy alto' ? 'high' :
+                           interp === 'Medio' ? 'medium' :
+                           interp === 'Bajo' ? 'low' : '';
+                },
+
+                exportFilteredData() {
+                    const csv = this.convertToCSV(this.filteredData);
+                    this.downloadCSV(csv, 'datos_filtrados.csv');
+                },
+
+                exportSummary() {
+                    const dimensions = this.getCurrentDimensions();
+                    let csv = 'Dimensión,Promedio,Interpretación\n';
+
+                    dimensions.forEach(dim => {
+                        const interp = this.getInterpretation(dim.average);
+                        csv += `"${dim.name}",${dim.average.toFixed(2)},"${interp}"\n`;
+                    });
+
+                    csv += '\nItem,Promedio,Desv. Estándar\n';
+                    dimensions.forEach(dim => {
+                        for (let i = dim.itemRange[0]; i <= dim.itemRange[1]; i++) {
+                            csv += `Item ${i},${dim.itemAverages[i].toFixed(2)},${dim.itemStdDevs[i].toFixed(2)}\n`;
+                        }
+                    });
+
+                    this.downloadCSV(csv, 'resumen_resultados.csv');
+                },
+
+                convertToCSV(data) {
+                    if (data.length === 0) return '';
+
+                    const keys = Object.keys(data[0]);
+                    let csv = keys.map(k => `"${k}"`).join(',') + '\n';
+
+                    data.forEach(row => {
+                        csv += keys.map(k => {
+                            const val = row[k];
+                            if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
+                                return `"${val.replace(/"/g, '""')}"`;
+                            }
+                            return `"${val}"`;
+                        }).join(',') + '\n';
+                    });
+
+                    return csv;
+                },
+
+                downloadCSV(csv, filename) {
+                    const bom = '\uFEFF';
+                    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', filename);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                },
+
+                loadDemoData() {
+                    const demoData = this.generateDemoData();
+                    this.allData = demoData;
+                    this.applyFilters();
+                    this.hasData = true;
+                    this.updateCharts();
+                    this.extractOpenQuestions();
+                },
+
+                generateDemoData() {
+                    const data = [];
+                    const carreras = ['Ingeniería en Sistemas', 'Administración', 'Psicología', 'Enfermería'];
+                    const frecuencias = ['Diaria', 'Varias veces por semana', 'Una vez por semana', 'Ocasional'];
+                    const openQuestionsExamples = {
+                        1: ['Muy útil para mi formación', 'Ayuda en la toma de decisiones', 'Proporciona buena orientación'],
+                        2: ['Excelente herramienta educativa', 'Mejora mi comprensión', 'Fácil de usar'],
+                        3: ['Buena experiencia general', 'Recomendaría a otros', 'Impacta positivamente']
+                    };
+
+                    for (let i = 0; i < 30; i++) {
+                        const instrument = Math.random() > 0.5 ? 'Diotimia' : 'SeAmigo';
+                        const row = {
+                            instrumento: instrument,
+                            timestamp: new Date(2024, Math.floor(Math.random() * 4), Math.floor(Math.random() * 28) + 1).toISOString(),
+                            edad: Math.floor(Math.random() * 15) + 18,
+                            sexo: Math.random() > 0.5 ? 'Masculino' : 'Femenino',
+                            carrera: carreras[Math.floor(Math.random() * carreras.length)],
+                            semestre: Math.floor(Math.random() * 8) + 1,
+                            uso_previo_ia: Math.random() > 0.4 ? 'Sí' : 'No',
+                            frecuencia_uso: frecuencias[Math.floor(Math.random() * frecuencias.length)]
+                        };
+
+                        const maxItem = instrument === 'Diotimia' ? 18 : 24;
+                        for (let j = 1; j <= maxItem; j++) {
+                            row[`item_${j}`] = Math.floor(Math.random() * 5) + 1;
+                        }
+
+                        const maxQuestion = instrument === 'Diotimia' ? 3 : 2;
+                        for (let j = 1; j <= maxQuestion; j++) {
+                            const examples = openQuestionsExamples[j] || ['Respuesta de ejemplo'];
+                            row[`pregunta_abierta_${j}`] = examples[Math.floor(Math.random() * examples.length)];
+                        }
+
+                        data.push(row);
+                    }
+
+                    return data;
+                },
+
+                resetDashboard() {
+                    this.allData = [];
+                    this.filteredData = [];
+                    this.hasData = false;
+                    this.activeInstrument = 'all';
+                    this.clearFilters();
+
+                    Object.values(this.charts).forEach(chart => {
+                        if (chart) chart.destroy();
+                    });
+                    this.charts = {};
+                },
+
+                toggleTheme() {
+                    document.documentElement.classList.toggle('dark');
+                }
+            },
+
+            watch: {
+                activeInstrument() {
+                    this.applyFilters();
+                },
+                'filters.carrera': {
+                    handler() {
+                        this.applyFilters();
+                    },
+                    deep: true
+                },
+                'filters.semestre': {
+                    handler() {
+                        this.applyFilters();
+                    },
+                    deep: true
+                },
+                'filters.frecuencia_uso'() {
+                    this.applyFilters();
+                },
+                'filters.uso_previo_ia'() {
+                    this.applyFilters();
+                },
+                'filters.edadMin'() {
+                    this.applyFilters();
+                },
+                'filters.edadMax'() {
+                    this.applyFilters();
+                }
+            },
+
+            mounted() {
+                this.filters.edadMin = this.minAge;
+                this.filters.edadMax = this.maxAge;
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
